@@ -2,7 +2,6 @@ streamlit==1.39.0
 
 faster-whisper>=1.1.0,<2.0.0
 ctranslate2>=4.6.0,<5.0.0
-pyaudioop
 
 notion-client==2.2.1
 
