@@ -3,16 +3,46 @@ import os
 import tempfile
 from typing import Tuple, Optional
 
-from pydub import AudioSegment
+import av
 from faster_whisper import WhisperModel
 
 
 def _convert_to_wav(input_path: str) -> str:
-    audio = AudioSegment.from_file(input_path)
-    audio = audio.set_channels(1).set_frame_rate(16000)
+    """Convert audio to WAV format with mono, 16kHz sample rate using PyAV."""
     out_fd, out_path = tempfile.mkstemp(suffix=".wav")
     os.close(out_fd)
-    audio.export(out_path, format="wav")
+    
+    try:
+        container = av.open(input_path)
+        audio_stream = next(s for s in container.streams if s.type == 'audio')
+        
+        output_container = av.open(out_path, 'w')
+        output_stream = output_container.add_stream('pcm_s16le', rate=16000)
+        output_stream.channels = 1
+        
+        resampler = av.AudioResampler(format='s16', layout='mono', samples_per_frame=16000)
+        
+        for frame in container.decode(audio_stream):
+            frame.rate = 16000
+            frame.layout.name = 'mono'
+            resampled_frames = resampler.resample(frame)
+            for f in resampled_frames:
+                for packet in output_stream.encode(f):
+                    output_container.mux(packet)
+        
+        # Flush remaining packets
+        for packet in output_stream.encode():
+            output_container.mux(packet)
+        
+        output_container.close()
+    except Exception as e:
+        # Clean up on error
+        try:
+            os.remove(out_path)
+        except Exception:
+            pass
+        raise RuntimeError(f"Failed to convert audio: {e}") from e
+    
     return out_path
 
 
