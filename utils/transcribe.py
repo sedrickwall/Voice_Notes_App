@@ -17,18 +17,19 @@ def _convert_to_wav(input_path: str) -> str:
         audio_stream = next(s for s in container.streams if s.type == 'audio')
         
         output_container = av.open(out_path, 'w')
+        # Create output stream with mono layout (1 channel)
         output_stream = output_container.add_stream('pcm_s16le', rate=16000)
-        output_stream.channels = 1
         
-        resampler = av.AudioResampler(format='s16', layout='mono', samples_per_frame=16000)
+        # Create resampler to convert to mono, 16kHz
+        resampler = av.AudioResampler(format='s16', layout='mono')
         
         for frame in container.decode(audio_stream):
-            frame.rate = 16000
-            frame.layout.name = 'mono'
+            # Resample the frame to mono, 16kHz
             resampled_frames = resampler.resample(frame)
-            for f in resampled_frames:
-                for packet in output_stream.encode(f):
-                    output_container.mux(packet)
+            if resampled_frames:
+                for f in resampled_frames:
+                    for packet in output_stream.encode(f):
+                        output_container.mux(packet)
         
         # Flush remaining packets
         for packet in output_stream.encode():
