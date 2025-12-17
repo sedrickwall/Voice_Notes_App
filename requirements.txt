@@ -1,7 +1,8 @@
 streamlit==1.39.0
 pydub==0.25.1
 
-faster-whisper==1.0.3
+faster-whisper==1.2.1
+ctranslate2==4.3.1
 
 notion-client==2.2.1
 
