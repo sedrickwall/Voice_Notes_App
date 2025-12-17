@@ -4,6 +4,7 @@ import tempfile
 import streamlit as st
 
 from utils.transcribe import transcribe_audio
+from utils.openai_transcribe import transcribe_audio_openai
 from utils.summarize import generate_notes
 from utils.actions import extract_action_items
 from utils.formatting import to_markdown
@@ -57,6 +58,17 @@ with st.container():
 
     with colB:
         st.subheader("2) Settings")
+        
+        # Transcription method selector
+        transcribe_method = st.radio(
+            "Transcription method",
+            ["Local (Faster-Whisper)", "OpenAI (Faster)"],
+            help="Local: Free, slower. OpenAI: Faster, ~$0.012 per 2-hour file"
+        )
+        
+        if transcribe_method == "OpenAI (Faster)":
+            openai_key = st.text_input("OpenAI API Key", type="password", help="Get from https://platform.openai.com/api-keys")
+        
         model_size = st.selectbox("Whisper model", ["tiny", "base", "small", "medium"], index=2)
         language = st.selectbox("Language", ["en", "auto"], index=0)
         st.caption("Tip: small is a great default. medium is slower but can be more accurate.")
@@ -65,9 +77,19 @@ with st.container():
 
 st.divider()
 
+# File size limit check
+MAX_FILE_SIZE_MB = 50
+if audio_file is not None and audio_file.size > MAX_FILE_SIZE_MB * 1024 * 1024:
+    st.warning(f"⚠️ File is {audio_file.size / (1024*1024):.1f}MB. Recommended max: {MAX_FILE_SIZE_MB}MB. Processing may be slow or fail.")
+
 generate = st.button("Generate Notes", type="primary", disabled=audio_file is None)
 
 if generate and audio_file is not None:
+    # Validate OpenAI key if using OpenAI method
+    if transcribe_method == "OpenAI (Faster)" and not openai_key:
+        st.error("Please provide your OpenAI API key")
+        st.stop()
+    
     with st.spinner("Processing audio…"):
         # Save uploaded file to temp
         suffix = os.path.splitext(audio_file.name)[1].lower() or ".m4a"
@@ -76,9 +98,21 @@ if generate and audio_file is not None:
         with open(temp_path, "wb") as f:
             f.write(audio_file.getbuffer())
 
-        # Transcribe
-        lang = None if language == "auto" else language
-        transcript, detected_lang = transcribe_audio(temp_path, model_size=model_size, language=lang)
+        try:
+            # Transcribe using selected method
+            lang = None if language == "auto" else language
+            
+            if transcribe_method == "OpenAI (Faster)":
+                transcript, detected_lang = transcribe_audio_openai(temp_path, api_key=openai_key, language=lang)
+            else:
+                transcript, detected_lang = transcribe_audio(temp_path, model_size=model_size, language=lang)
+        except Exception as e:
+            st.error(f"Transcription failed: {str(e)}")
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+            st.stop()
 
         try:
             os.remove(temp_path)
